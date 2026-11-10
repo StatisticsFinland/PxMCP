@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="PxMCP.McpTests/PxMCP.McpTests.csproj" />
+  <Project Path="PxMCP.Tests/PxMCP.Tests.csproj" />
+  <Project Path="PxMCP.IntegrationTests/PxMCP.IntegrationTests.csproj" />
+  <Project Path="PxMCP/PxMCP.csproj" />
+</Solution>

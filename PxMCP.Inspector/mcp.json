@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "pxmcp": {
+      "type": "streamable-http",
+      "url": "http://localhost:5277/mcp"
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "pxmcp-inspector",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MCP Inspector configured for the PxMCP server",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "inspect": "mcp-inspector --web --config mcp.json",
+    "inspect:cli": "mcp-inspector --cli --config mcp.json --server pxmcp",
+    "inspect:list-tools": "mcp-inspector --cli --config mcp.json --server pxmcp --method tools/list"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/inspector": "^2.13.0"
+  }
+}
