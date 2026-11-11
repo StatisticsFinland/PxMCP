@@ -32,13 +32,7 @@ Separate differing module/subcheck outcomes. For an aggregate status, prioritize
 
 ## Dependency preparation
 
-After the input checks, run the build below with `--no-restore`. If it reports missing declared dependency assets (`NETSDK1004` or `NETSDK1064`), permit exactly one solution restore from the existing configured NuGet sources, then retry the build:
-
-```text
-dotnet restore PxMCP.slnx --verbosity minimal
-```
-
-Keep subsequent build and test commands on `--no-restore`; do not change package references, add package sources, or install tools. Record the restore separately from review findings. If restore cannot complete, mark affected checks unverified and continue independent static review.
+One restore of declared dependencies from the existing NuGet sources is allowed when needed. Keep build and test commands on `--no-restore`; if restore fails, mark these checks unverified and continue static review.
 
 ## Checks
 
