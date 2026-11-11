@@ -15,9 +15,9 @@ Follow `.github/copilot-instructions.md`. Read `docs/ARCHITECTURE.md` and any ot
 
 ## Shared Policies
 
-- Safety: do not inspect secrets, run checks requiring secrets or effects outside the project, or install missing tools/dependencies. Do not start the MCP server or Inspector, or call the configured PX API, during review; those actions can contact a live service. The protocol tests use an in-process MCP server and mocked `IPxApiClient`; inspect changed test setup first and do not run tests that could contact a live PX API.
+- Safety: do not inspect secrets, run checks requiring secrets, or install tools or change dependency declarations. One restore of declared project dependencies from existing NuGet sources is allowed as described under Dependency preparation; it may write to normal NuGet caches and SDK state. Do not start the MCP server or Inspector, or call the configured PX API, during review; those actions can contact a live service. The protocol tests use an in-process MCP server and mocked `IPxApiClient`; inspect changed test setup first and do not run tests that could contact a live PX API.
 - Baseline: assume `HEAD` builds without warnings/errors and all tests pass. This is an acceptance assumption, not verified history. Observed build warnings/errors and test failures are findings and review blockers even if apparently pre-existing. Do not invent a staged-change cause; missing prerequisites are verification blockers, not product defects.
-- Scope: run checks 1-2 when staged implementation, tests, dependencies, build/test configuration, or shared contracts affect this backend, using the installed .NET 10 SDK and already-restored dependencies. Documentation/prompt-only changes need no execution unless they affect build inputs. Explain scope decisions; uncertain impact is unverified. Continue independent checks after failures.
+- Scope: run checks 1-2 when staged implementation, tests, dependencies, build/test configuration, or shared contracts affect this backend, using the installed .NET 10 SDK; use Dependency preparation if declared dependency assets are missing. Documentation/prompt-only changes need no execution unless they affect build inputs. Explain scope decisions; uncertain impact is unverified. Continue independent checks after failures.
 - Sandbox: use one MSBuild node and disable the terminal logger (`-m:1 --tl:off`) for .NET commands to avoid sandbox named-pipe failures.
 - Evidence: record command, working directory, exit code, and result; include test suites/counts and failures, skips, and snapshots where reported. Cite file/line, scenario, and impact for code or coverage findings. Never invent results or coverage percentages; report numeric coverage only if measured. Working-tree results cannot pass staged verification unless relevant inputs match the index.
 
@@ -25,7 +25,19 @@ Use `pass` for an evidenced criterion met, `finding` for an evidenced defect/gap
 
 ## Checks
 
-Check each independently; commands run from the repository root. Do not restore packages or install tools.
+## Dependency preparation
+
+Before checks 1-2, run the build below with `--no-restore`. If it reports missing declared dependency assets (`NETSDK1004` or `NETSDK1064`), permit exactly one solution restore from the existing configured NuGet sources, then retry the build:
+
+```text
+dotnet restore PxMCP.slnx --verbosity minimal
+```
+
+Keep subsequent build and test commands on `--no-restore`; do not change package references, add package sources, or install tools. Record the restore separately from review findings. If restore cannot complete, mark affected checks unverified and continue independent static review.
+
+## Checks
+
+Check each independently; commands run from the repository root. Use `--no-restore` except for Dependency preparation.
 
 1. Build/typecheck: `dotnet build PxMCP.slnx -c Release --no-restore --no-incremental --verbosity normal -m:1 --tl:off`. Pass requires successful exit and no warnings/errors. A solution build covers the server and all three test projects.
 2. Test execution: `dotnet test PxMCP.slnx -c Release --no-restore --verbosity normal -m:1 --tl:off`. This runs `PxMCP.Tests`, `PxMCP.McpTests` and `PxMCP.IntegrationTests`. Inspect changed test setup first to confirm tests use mocked PX API dependencies and do not make external calls. Pass requires successful exit, at least one executed test, no failures, and no unexplained relevant skips. Zero tests or missing execution evidence is unverified; relevant skips are coverage gaps.

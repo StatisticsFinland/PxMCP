@@ -1,0 +1,103 @@
+name: PxMCP CI
+
+run-name: ${{ github.event_name == 'pull_request' &&
+  format('PxMCP CI for PR {0}', github.event.pull_request.number) ||
+  format('PxMCP CI for {0}', github.event.head_commit.message) }}
+
+on:
+  pull_request:
+    branches:
+    - dev
+  push:
+    branches:
+    - main
+    - test
+    - dev
+  workflow_dispatch:
+
+# CI environment variable set to false to prevent warnings to cause the pipeline to fail
+env:
+  CI: false
+
+permissions:
+  contents: read
+
+jobs:
+  check-version:
+    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'dev' && github.actor != 'dependabot[bot]' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Check project version
+        run: bash .github/scripts/check_version_changes.sh
+
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        dotnet-version: ['10.x']
+        configuration: [ 'Debug' ]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: ${{ matrix.os == 'ubuntu-latest' && github.event_name == 'pull_request' && '0' || '1' }}
+
+      - name: Set up dotnet
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: ${{ matrix.dotnet-version }}
+
+      - name: Install dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --verbosity normal --configuration ${{ matrix.configuration }}
+
+      - name: Run tests
+        if: ${{ matrix.os != 'ubuntu-latest' || github.event_name != 'pull_request' }}
+        run: dotnet test --no-build --no-restore --verbosity normal --configuration ${{ matrix.configuration }}
+
+      - name: Run tests with coverage
+        if: ${{ matrix.os == 'ubuntu-latest' && github.event_name == 'pull_request' }}
+        run: dotnet test --no-build --no-restore --verbosity normal --configuration ${{ matrix.configuration }} --collect:"XPlat Code Coverage" --results-directory TestResults
+
+      - name: Check new code coverage
+        if: ${{ matrix.os == 'ubuntu-latest' && github.event_name == 'pull_request' }}
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git check-ref-format "refs/heads/$BASE_REF"
+          git fetch --no-tags origin "+refs/heads/$BASE_REF:refs/remotes/origin/$BASE_REF"
+          python3 -m venv "$RUNNER_TEMP/diff-cover-venv"
+          "$RUNNER_TEMP/diff-cover-venv/bin/python" -m pip install diff-cover==10.6.0
+          "$RUNNER_TEMP/diff-cover-venv/bin/diff-cover" TestResults/*/coverage.cobertura.xml \
+            --compare-branch="origin/$BASE_REF" \
+            --format=html:diff-coverage.html,json:diff-coverage.json \
+            --fail-under=75
+          "$RUNNER_TEMP/diff-cover-venv/bin/python" - <<'PY'
+          import json
+
+          with open("diff-coverage.json", encoding="utf-8") as report_file:
+              report = json.load(report_file)
+          total_lines = report["total_num_lines"]
+          covered_lines = total_lines - report["total_num_violations"]
+          if total_lines and covered_lines * 100 <= total_lines * 75:
+              raise SystemExit("New code coverage must be greater than 75%.")
+          PY
+
+      - name: Upload coverage reports
+        if: ${{ always() && matrix.os == 'ubuntu-latest' && github.event_name == 'pull_request' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-reports
+          path: |
+            TestResults/**/coverage.cobertura.xml
+            diff-coverage.html
+            diff-coverage.json

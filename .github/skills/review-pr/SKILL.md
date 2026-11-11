@@ -15,9 +15,9 @@ Follow `.github/copilot-instructions.md`. Read `docs/ARCHITECTURE.md` and any ot
 
 ## Shared Policies
 
-- Safety: do not inspect secrets, run checks requiring secrets or effects outside the project, or install missing tools/dependencies. Do not start the MCP server or Inspector, or call the configured PX API, during review; those actions can contact a live service. The protocol tests use an in-process MCP server and mocked `IPxApiClient`; inspect changed test setup before executing tests and do not run tests that could contact a live PX API. Do not modify the checkout to obtain a baseline or label `HEAD` results as `dev` results.
+- Safety: do not inspect secrets, run checks requiring secrets, or install tools or change dependency declarations. One restore of declared project dependencies from existing NuGet sources is allowed as described under Dependency preparation; it may write to normal NuGet caches and SDK state. Do not start the MCP server or Inspector, or call the configured PX API, during review; those actions can contact a live service. The protocol tests use an in-process MCP server and mocked `IPxApiClient`; inspect changed test setup before executing tests and do not run tests that could contact a live PX API. Do not modify the checkout to obtain a baseline or label `HEAD` results as `dev` results.
 - Baseline: assume `dev` builds without warnings/errors and all tests pass. This is an acceptance assumption, not verified history; no baseline run or historical comparison is required. Every observed test failure or compiler/analyzer warning/error is a review finding and blocker, even outside changed lines or apparently pre-existing. Do not dismiss baseline debt or invent PR-introduced causality. Missing prerequisites are verification blockers, not product defects.
-- Scope: determine affected projects from implementation, tests, dependencies, build/test configuration, and shared contracts. For affected code, run the solution build and test commands below with the installed .NET 10 SDK and already-restored dependencies. Documentation/prompt-only changes need execution only if they affect build inputs. If the working tree is not clean, stop before reviewing or running checks. Do not restore packages or install tools.
+- Scope: determine affected projects from implementation, tests, dependencies, build/test configuration, and shared contracts. For affected code, run the solution build and test commands below with the installed .NET 10 SDK; use Dependency preparation if declared dependency assets are missing. Documentation/prompt-only changes need execution only if they affect build inputs. If the working tree is not clean, stop before reviewing or running checks.
 - Sandbox: use one MSBuild node and disable the terminal logger (`-m:1 --tl:off`) for .NET commands to avoid sandbox named-pipe failures.
 - Evidence: record command, working directory, exit code, and result. For tests, report suites and tests exercised, passed, failed, and skipped; mark counts not reported as such. Support code findings with file/line and a concrete scenario. Never invent output, locations, causes, or reviewer actions; subjective style preferences alone are not defects.
 
@@ -29,6 +29,16 @@ Use these statuses, with reasons for unverified/not applicable:
 - `not applicable`: demonstrably outside scope, not merely missing tools/tests.
 
 Separate differing module/subcheck outcomes. For an aggregate status, prioritize finding, then unverified, then pass; use not applicable only when all subchecks are not applicable. Missing prerequisites and failed build/test runs block a clean review. Never claim full coverage for partial inspection.
+
+## Dependency preparation
+
+After the input checks, run the build below with `--no-restore`. If it reports missing declared dependency assets (`NETSDK1004` or `NETSDK1064`), permit exactly one solution restore from the existing configured NuGet sources, then retry the build:
+
+```text
+dotnet restore PxMCP.slnx --verbosity minimal
+```
+
+Keep subsequent build and test commands on `--no-restore`; do not change package references, add package sources, or install tools. Record the restore separately from review findings. If restore cannot complete, mark affected checks unverified and continue independent static review.
 
 ## Checks
 
@@ -44,11 +54,12 @@ Run applicable commands from the repository root. Use `--no-restore`; do not ins
 8. Complexity: name added abstractions, dependencies, or branches and the requirement each serves; flag unnecessary parts with a concrete example.
 9. Documentation: check `docs/ARCHITECTURE.md`, XML comments, tool descriptions, and user-facing claims against changed behavior; cite what was checked or explain why no docs are affected. For PX API model changes, check the relevant model instruction file and schema alignment.
 10. Cohesion: state the single purpose of the PR diff and identify any changed paths that do not serve it.
+11. Version gate: determine PR-changed paths using the merge-base diff against the chosen dev ref. If no paths under `PxMCP/` changed, mark the gate not applicable, even if the branch's older snapshot differs from dev. For app changes, use the version from `HEAD` if `PxMCP/PxMCP.csproj` changed in the PR; otherwise use the chosen dev ref's version, which the merge preserves. Require this effective version to be strictly greater than the chosen test ref's version. If the project file changed, also require its submitted version not to be lower than the chosen dev ref's version; equality is allowed by this non-downgrade check. Use `origin/test` when available, otherwise local `test`, and disclose if the ref may be stale. CI exempts PRs from `dependabot[bot]`; do not infer that exemption from a branch name alone. Missing/invalid versions or unknown exemption evidence is unverified. Do not run `.github/scripts/check_version_changes.sh`; it fetches. Compare major, then minor, then patch directly rather than treating the script's result as proof.
 
 ## Output Format
 
 Report in this order:
 
 1. Findings: actionable issues, severity ordered (high: security/data loss or core tool workflow broken; medium: other functional regression or meaningful test gap; low: limited impact). Include scenario, impact, and evidence under the shared policies. If none were established, say so without implying unverified checks passed.
-2. Check results: table with `Check`, `Scope`, `Status`, and `Evidence`, covering **all 10 checks**.
+2. Check results: table with `Check`, `Scope`, `Status`, and `Evidence`, covering **all 11 checks**.
 3. Scope and limitations: commit purpose, reviewed base and `HEAD`, inspected/unreviewed paths, excluded secret-bearing paths by name only, worktree cleanliness, baseline assumption, and remaining blockers. Do not claim PR readiness while findings or applicable unverified checks remain.
